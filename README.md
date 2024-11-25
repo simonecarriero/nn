@@ -1,5 +1,5 @@
 # NN
-The simplest possible autograd engine for backpropagation on a DAG of scalar values, plus a neural network built on it.
+The simplest possible autograd engine for backpropagation on a scalar DAG, plus a neural network built on it.
 Heavily inspired by micrograd and PyTorch.
 
 Refs:
