@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::f64::consts::E;
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -15,7 +16,8 @@ struct Value {
 enum Op {
     None,
     Sum { x: Rc<Value>, y: Rc<Value> },
-    Mul { x: Rc<Value>, y: Rc<Value> }
+    Mul { x: Rc<Value>, y: Rc<Value> },
+    Tanh { x: Rc<Value> },
 }
 
 fn value(data: f64) -> Rc<Value> {
@@ -44,11 +46,22 @@ fn mul(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
     })
 }
 
+fn tanh(x: &Rc<Value>) -> Rc<Value> {
+    let d = *x.data.borrow();
+    Rc::new(Value {
+        label: Uuid::new_v4(),
+        data: RefCell::new((E.powf(2.0 * d) - 1.0) / (E.powf(2.0 * d) + 1.0)),
+        grad: RefCell::new(0.0),
+        back: Op::Tanh { x: Rc::clone(x) },
+    })
+}
+
 fn prev(value: &Rc<Value>) -> Vec<&Rc<Value>> {
    match &value.back {
        Op::None => vec![],
        Op::Sum { x, y } => vec![x, y],
        Op::Mul { x, y } => vec![x, y],
+       Op::Tanh { x } => vec![x],
    }
 }
 
@@ -87,6 +100,10 @@ fn backward_step(value: &Rc<Value>) {
             *x.grad.borrow_mut() += x_local_derivative * *value.grad.borrow();
             *y.grad.borrow_mut() += y_local_derivative * *value.grad.borrow();
         }
+        Op::Tanh { x } => {
+            let x_local_derivative = 1.0 -  &value.data.borrow().powi(2);
+            *x.grad.borrow_mut() += x_local_derivative * *value.grad.borrow();
+        }
     }
 }
 
@@ -99,16 +116,21 @@ mod tests {
         let a = value(0.1);
         let b = value(0.2);
         let c = value(0.3);
-        let x = add(&a, &mul(&b, &c));
+        let x = tanh(&add(&a, &mul(&b, &c)));
 
-        assert_eq!(*x.data.borrow(), 0.16);
-        if let Op::Sum { x, y } = &x.back {
-            assert_eq!(*x.data.borrow(), 0.1);
-            assert_eq!(x.back, Op::None);
-            assert_eq!(*y.data.borrow(), 0.06);
-            if let Op::Mul { x, y} = &y.back {
-                assert_eq!(*x.data.borrow(), 0.2);
-                assert_eq!(*y.data.borrow(), 0.3);
+        assert_eq!(*x.data.borrow(), 0.15864850429749888);
+        if let Op::Tanh { x } = &x.back {
+            assert_eq!(*x.data.borrow(), 0.16);
+            if let Op::Sum { x, y } = &x.back {
+                assert_eq!(*x.data.borrow(), 0.1);
+                assert_eq!(x.back, Op::None);
+                assert_eq!(*y.data.borrow(), 0.06);
+                if let Op::Mul { x, y} = &y.back {
+                    assert_eq!(*x.data.borrow(), 0.2);
+                    assert_eq!(*y.data.borrow(), 0.3);
+                } else {
+                    assert!(false, "unexpected Op")
+                }
             } else {
                 assert!(false, "unexpected Op")
             }
@@ -144,18 +166,27 @@ mod tests {
     }
 
     #[test]
+    fn backward_step_on_tanh_node_should_add_gradient_to_the_variable() {
+        let a = value(0.8814);
+        let x = tanh(&a);
+        *x.grad.borrow_mut() = 1.0;
+
+        backward_step(&x);
+
+        assert_eq!(*a.grad.borrow(), 0.4999813233768232);
+    }
+
+    #[test]
     fn backward_on_dag_should_execute_on_topological_sort() {
-        let x = value(3.0);
-        let y = value(3.0);
-        let z = value(2.0);
-        let a = mul(&x, &y);
-        let b = mul(&z, &a);
-        let c = add(&a, &b);
+        let a = value(3.0);
+        let b = value(3.0);
+        let c = value(2.0);
+        let x = add(&mul(&a, &b), &mul(&c, &mul(&a, &b)));
 
-        backward(&c);
+        backward(&x);
 
-        assert_eq!(*x.grad.borrow(), 9.0);
-        assert_eq!(*y.grad.borrow(), 9.0);
-        assert_eq!(*z.grad.borrow(), 9.0);
+        assert_eq!(*a.grad.borrow(), 9.0);
+        assert_eq!(*b.grad.borrow(), 9.0);
+        assert_eq!(*c.grad.borrow(), 9.0);
     }
 }
