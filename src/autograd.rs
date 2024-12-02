@@ -5,9 +5,9 @@ use std::rc::Rc;
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq)]
-struct Value {
+pub struct Value {
+    pub data: RefCell<f64>,
     label: Uuid,
-    data: RefCell<f64>,
     grad: RefCell<f64>,
     back: Op,
 }
@@ -20,7 +20,7 @@ enum Op {
     Tanh { x: Rc<Value> },
 }
 
-fn value(data: f64) -> Rc<Value> {
+pub fn value(data: f64) -> Rc<Value> {
     value_with_grad(data, 0.0)
 }
 
@@ -28,7 +28,7 @@ fn value_with_grad(data: f64, grad: f64) -> Rc<Value> {
     Rc::new(Value { label: Uuid::new_v4(), data: RefCell::new(data), grad: RefCell::new(grad), back: Op::None })
 }
 
-fn add(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
+pub fn add(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
     Rc::new(Value {
         label: Uuid::new_v4(),
         data: RefCell::new(*x.data.borrow() + *y.data.borrow()),
@@ -37,7 +37,7 @@ fn add(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
     })
 }
 
-fn mul(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
+pub fn mul(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
     Rc::new(Value {
         label: Uuid::new_v4(),
         data: RefCell::new(*x.data.borrow() * *y.data.borrow()),
@@ -46,7 +46,7 @@ fn mul(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
     })
 }
 
-fn tanh(x: &Rc<Value>) -> Rc<Value> {
+pub fn tanh(x: &Rc<Value>) -> Rc<Value> {
     let d = *x.data.borrow();
     Rc::new(Value {
         label: Uuid::new_v4(),
