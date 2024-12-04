@@ -18,6 +18,12 @@ struct Mlp {
 }
 
 impl Neuron {
+    fn new(number_of_inputs: i32, rng: &mut StdRng) -> Neuron {
+        let weights = (0..number_of_inputs).map(|_| value(rng.sample(rng_range()))).collect();
+        let bias = value(rng.sample(rng_range()));
+        Neuron { weights, bias }
+    }
+
     fn process(&self, inputs: &[Rc<Value>]) -> Rc<Value> {
         let mut sum = value(0.0);
         for (wi, xi) in self.weights.iter().zip(inputs) {
@@ -28,12 +34,23 @@ impl Neuron {
 }
 
 impl Layer {
+    fn new(number_of_inputs: i32, number_of_neurons: i32, rng: &mut StdRng) -> Layer {
+        Layer { neurons: (0..number_of_neurons).map(|_| Neuron::new(number_of_inputs, rng)).collect()}
+    }
+
     fn process(&self, inputs: &[Rc<Value>]) -> Vec<Rc<Value>> {
         self.neurons.iter().map(|n| n.process(inputs)).collect()
     }
 }
 
 impl Mlp {
+    fn new(number_of_inputs: i32, layers: Vec<i32>, rng: &mut StdRng) -> Mlp {
+        let n = [vec![number_of_inputs], layers].concat();
+        let layers = n.iter().zip(n.iter().skip(1))
+            .map(|(n_inputs, n_neurons)| Layer::new(*n_inputs, *n_neurons, rng)).collect();
+        Mlp { layers }
+    }
+
     fn process(&self, inputs: &[f64]) -> Vec<Rc<Value>> {
         let mut x: Vec<_> = inputs.iter().map(|i| value(*i)).collect();
         for layer in &self.layers {
@@ -41,23 +58,6 @@ impl Mlp {
         }
         x
     }
-}
-
-fn neuron(number_of_inputs: i32, rng: &mut StdRng) -> Neuron {
-    let weights = (0..number_of_inputs).map(|_| value(rng.sample(rng_range()))).collect();
-    let bias = value(rng.sample(rng_range()));
-    Neuron { weights, bias }
-}
-
-fn layer(number_of_inputs: i32, number_of_neurons: i32, rng: &mut StdRng) -> Layer {
-    Layer { neurons: (0..number_of_neurons).map(|_| neuron(number_of_inputs, rng)).collect()}
-}
-
-fn mpl(number_of_inputs: i32, layers: Vec<i32>, rng: &mut StdRng) -> Mlp {
-    let n = [vec![number_of_inputs], layers].concat();
-    let layers = n.iter().zip(n.iter().skip(1))
-        .map(|(n_inputs, n_neurons)| layer(*n_inputs, *n_neurons, rng)).collect();
-    Mlp { layers }
 }
 
 fn rng_range() -> Uniform<f64> {
@@ -74,10 +74,10 @@ mod tests {
     fn neuron_should_process_input() {
         let mut rng = StdRng::seed_from_u64(42);
         let number_of_inputs = 3;
-        let n = neuron(number_of_inputs, &mut rng);
+        let neuron = Neuron::new(number_of_inputs, &mut rng);
         let inputs: Vec<_> = (0..number_of_inputs).map(|_| value(rng.gen())).collect();
 
-        let output = n.process(&inputs);
+        let output = neuron.process(&inputs);
 
         assert_eq!(*output.data.borrow(), 0.050308753080100216);
     }
@@ -87,10 +87,10 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let number_of_inputs = 3;
         let number_of_neurons = 3;
-        let l = layer(number_of_inputs, number_of_neurons, &mut rng);
+        let layer = Layer::new(number_of_inputs, number_of_neurons, &mut rng);
         let inputs: Vec<_> = (0..number_of_inputs).map(|_| value(rng.gen())).collect();
 
-        let output = l.process(&inputs);
+        let output = layer.process(&inputs);
 
         let outputs: Vec<_> = output.iter().map(|n| *n.data.borrow()).collect();
         assert_eq!(outputs, vec![
@@ -104,10 +104,10 @@ mod tests {
     fn mlp_should_process_inputs() {
         let number_of_inputs = 3;
         let mut rng = StdRng::seed_from_u64(42);
-        let nn = mpl(number_of_inputs, vec![4, 4, 1], &mut rng);
+        let mlp = Mlp::new(number_of_inputs, vec![4, 4, 1], &mut rng);
 
         let inputs: Vec<_> = (0..number_of_inputs).map(|_| rng.gen()).collect();
-        let output = nn.process(&inputs);
+        let output = mlp.process(&inputs);
 
         assert_eq!(*output[0].data.borrow(), 0.88226677498484760);
     }
