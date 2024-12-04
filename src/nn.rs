@@ -18,7 +18,7 @@ struct Mlp {
 }
 
 impl Neuron {
-    fn process(&self, inputs: &[&Rc<Value>]) -> Rc<Value> {
+    fn process(&self, inputs: &[Rc<Value>]) -> Rc<Value> {
         let mut sum = value(0.0);
         for (wi, xi) in self.weights.iter().zip(inputs) {
             sum = add(&sum, &mul(wi, xi));
@@ -28,7 +28,7 @@ impl Neuron {
 }
 
 impl Layer {
-    fn process(&self, inputs: &[&Rc<Value>]) -> Vec<Rc<Value>> {
+    fn process(&self, inputs: &[Rc<Value>]) -> Vec<Rc<Value>> {
         self.neurons.iter().map(|n| n.process(inputs)).collect()
     }
 }
@@ -37,7 +37,7 @@ impl Mlp {
     fn process(&self, inputs: &[f64]) -> Vec<Rc<Value>> {
         let mut x: Vec<_> = inputs.iter().map(|i| value(*i)).collect();
         for layer in &self.layers {
-            x = layer.process(&x.iter().collect::<Vec<_>>());
+            x = layer.process(&x);
         }
         x
     }
@@ -76,9 +76,8 @@ mod tests {
         let number_of_inputs = 3;
         let n = neuron(number_of_inputs, &mut rng);
         let inputs: Vec<_> = (0..number_of_inputs).map(|_| value(rng.gen())).collect();
-        let inputs_refs: Vec<_> = inputs.iter().collect();
 
-        let output = n.process(&inputs_refs);
+        let output = n.process(&inputs);
 
         assert_eq!(*output.data.borrow(), 0.050308753080100216);
     }
@@ -90,9 +89,8 @@ mod tests {
         let number_of_neurons = 3;
         let l = layer(number_of_inputs, number_of_neurons, &mut rng);
         let inputs: Vec<_> = (0..number_of_inputs).map(|_| value(rng.gen())).collect();
-        let inputs_refs: Vec<_> = inputs.iter().collect();
 
-        let output = l.process(&inputs_refs);
+        let output = l.process(&inputs);
 
         let outputs: Vec<_> = output.iter().map(|n| *n.data.borrow()).collect();
         assert_eq!(outputs, vec![
