@@ -13,6 +13,10 @@ struct Layer {
     neurons: Vec<Neuron>,
 }
 
+struct Mlp {
+    layers: Vec<Layer>
+}
+
 impl Neuron {
     fn process(&self, inputs: &[&Rc<Value>]) -> Rc<Value> {
         let mut sum = value(0.0);
@@ -29,14 +33,31 @@ impl Layer {
     }
 }
 
+impl Mlp {
+    fn process(&self, inputs: &[f64]) -> Vec<Rc<Value>> {
+        let mut x: Vec<_> = inputs.iter().map(|i| value(*i)).collect();
+        for layer in &self.layers {
+            x = layer.process(&x.iter().collect::<Vec<_>>());
+        }
+        x
+    }
+}
+
 fn neuron(number_of_inputs: i32, rng: &mut StdRng) -> Neuron {
     let weights = (0..number_of_inputs).map(|_| value(rng.sample(rng_range()))).collect();
     let bias = value(rng.sample(rng_range()));
     Neuron { weights, bias }
 }
 
-fn layer(number_of_neurons: i16, number_of_inputs: i32, rng: &mut StdRng) -> Layer {
+fn layer(number_of_inputs: i32, number_of_neurons: i32, rng: &mut StdRng) -> Layer {
     Layer { neurons: (0..number_of_neurons).map(|_| neuron(number_of_inputs, rng)).collect()}
+}
+
+fn mpl(number_of_inputs: i32, layers: Vec<i32>, rng: &mut StdRng) -> Mlp {
+    let n = [vec![number_of_inputs], layers].concat();
+    let layers = n.iter().zip(n.iter().skip(1))
+        .map(|(n_inputs, n_neurons)| layer(*n_inputs, *n_neurons, rng)).collect();
+    Mlp { layers }
 }
 
 fn rng_range() -> Uniform<f64> {
@@ -46,7 +67,7 @@ fn rng_range() -> Uniform<f64> {
 #[cfg(test)]
 mod tests {
     use rand::Rng;
-    use crate::autograd::{value};
+    use crate::autograd::value;
     use crate::nn::*;
 
     #[test]
@@ -66,7 +87,8 @@ mod tests {
     fn layer_should_process_input_forwarding_to_all_neurons() {
         let mut rng = StdRng::seed_from_u64(42);
         let number_of_inputs = 3;
-        let l = layer(3, number_of_inputs, &mut rng);
+        let number_of_neurons = 3;
+        let l = layer(number_of_inputs, number_of_neurons, &mut rng);
         let inputs: Vec<_> = (0..number_of_inputs).map(|_| value(rng.gen())).collect();
         let inputs_refs: Vec<_> = inputs.iter().collect();
 
@@ -78,5 +100,17 @@ mod tests {
             0.5073009752057568,
             0.03629545163121696,
         ]);
+    }
+
+    #[test]
+    fn mlp_should_process_inputs() {
+        let number_of_inputs = 3;
+        let mut rng = StdRng::seed_from_u64(42);
+        let nn = mpl(number_of_inputs, vec![4, 4, 1], &mut rng);
+
+        let inputs: Vec<_> = (0..number_of_inputs).map(|_| rng.gen()).collect();
+        let output = nn.process(&inputs);
+
+        assert_eq!(*output[0].data.borrow(), 0.88226677498484760);
     }
 }
