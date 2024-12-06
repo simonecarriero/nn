@@ -17,6 +17,7 @@ enum Op {
     None,
     Sum { x: Rc<Value>, y: Rc<Value> },
     Mul { x: Rc<Value>, y: Rc<Value> },
+    Pow { x: Rc<Value>, y: Rc<Value> },
     Tanh { x: Rc<Value> },
 }
 
@@ -46,6 +47,15 @@ pub fn mul(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
     })
 }
 
+pub fn pow(x: &Rc<Value>, y: f64) -> Rc<Value> {
+    Rc::new(Value {
+        label: Uuid::new_v4(),
+        data: RefCell::new((*x.data.borrow()).powf(y)),
+        grad: RefCell::new(0.0),
+        back: Op::Pow { x: Rc::clone(x), y: value(y) }
+    })
+}
+
 pub fn tanh(x: &Rc<Value>) -> Rc<Value> {
     let d = *x.data.borrow();
     Rc::new(Value {
@@ -56,11 +66,20 @@ pub fn tanh(x: &Rc<Value>) -> Rc<Value> {
     })
 }
 
+pub fn sub(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
+    add(x, &mul(y, &value(-1.0)))
+}
+
+pub fn div(x: &Rc<Value>, y: &Rc<Value>) -> Rc<Value> {
+    mul(x, &pow(y, -1.0))
+}
+
 fn prev(value: &Rc<Value>) -> Vec<&Rc<Value>> {
    match &value.back {
        Op::None => vec![],
        Op::Sum { x, y } => vec![x, y],
        Op::Mul { x, y } => vec![x, y],
+       Op::Pow { x, y } => vec![x, y],
        Op::Tanh { x } => vec![x],
    }
 }
@@ -100,6 +119,10 @@ fn backward_step(value: &Rc<Value>) {
             *x.grad.borrow_mut() += x_local_derivative * *value.grad.borrow();
             *y.grad.borrow_mut() += y_local_derivative * *value.grad.borrow();
         }
+        Op::Pow { x, y } => {
+            let x_local_derivative = *y.data.borrow() * x.data.borrow().powf(*y.data.borrow() - 1.0);
+            *x.grad.borrow_mut() += x_local_derivative * *value.grad.borrow();
+        }
         Op::Tanh { x } => {
             let x_local_derivative = 1.0 -  &value.data.borrow().powi(2);
             *x.grad.borrow_mut() += x_local_derivative * *value.grad.borrow();
@@ -113,17 +136,22 @@ mod tests {
 
     #[test]
     fn expression_builds_dag() {
-        let a = value(0.1);
+        let a = value(0.1_f64.sqrt());
         let b = value(0.2);
         let c = value(0.3);
-        let x = tanh(&add(&a, &mul(&b, &c)));
+        let x = tanh(&add(&pow(&a, 2.0), &mul(&b, &c)));
 
         assert_eq!(*x.data.borrow(), 0.15864850429749888);
         if let Op::Tanh { x } = &x.back {
             assert_eq!(*x.data.borrow(), 0.16);
             if let Op::Sum { x, y } = &x.back {
                 assert_eq!(*x.data.borrow(), 0.1);
-                assert_eq!(x.back, Op::None);
+                if let Op::Pow { x, y } = &x.back {
+                    assert_eq!(*x.data.borrow(), 0.1_f64.sqrt());
+                    assert_eq!(*y.data.borrow(), 2.0);
+                } else {
+                    assert!(false, "unexpected Op")
+                }
                 assert_eq!(*y.data.borrow(), 0.06);
                 if let Op::Mul { x, y} = &y.back {
                     assert_eq!(*x.data.borrow(), 0.2);
@@ -174,6 +202,43 @@ mod tests {
         backward_step(&x);
 
         assert_eq!(*a.grad.borrow(), 0.4999813233768232);
+    }
+
+    #[test]
+    fn backward_step_on_pow_node_should_add_gradient_to_the_variables() {
+        let a = value(2.0);
+        let x =  pow(&a, 3.0);
+        *x.grad.borrow_mut() = 1.0;
+
+        backward_step(&x);
+
+        assert_eq!(*a.grad.borrow(), 12.0);
+    }
+
+    #[test]
+    fn backward_on_sub_should_add_gradient_to_the_variables() {
+        let a = value(3.0);
+        let b = value(2.0);
+        let x = sub(&a, &b);
+        *x.grad.borrow_mut() = 1.0;
+
+        backward(&x);
+
+        assert_eq!(*a.grad.borrow(), 1.0);
+        assert_eq!(*b.grad.borrow(), -1.0);
+    }
+
+    #[test]
+    fn backward_on_div_should_add_gradient_to_the_variables() {
+        let a = value(3.0);
+        let b = value(2.0);
+        let x = div(&a, &b);
+        *x.grad.borrow_mut() = 1.0;
+
+        backward(&x);
+
+        assert_eq!(*a.grad.borrow(), 0.5);
+        assert_eq!(*b.grad.borrow(), -0.75);
     }
 
     #[test]
