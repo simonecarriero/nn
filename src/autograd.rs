@@ -94,7 +94,7 @@ fn topological_sort<'a>(value: &'a Rc<Value>, topo: &mut Vec<&'a Rc<Value>>, vis
     }
 }
 
-fn backward(value: &Rc<Value>) {
+pub fn backward(value: &Rc<Value>) {
     *value.grad.borrow_mut() = 1.0;
     let mut topo = vec![];
     topological_sort(value, &mut topo, &mut HashSet::new());
@@ -168,64 +168,59 @@ mod tests {
     }
 
     #[test]
-    fn backward_step_on_sum_node_should_add_gradient_to_the_variables() {
-        let a = value_with_grad(0.1, 0.08);
-        let b = value_with_grad(0.2, 0.58);
+    fn backward_on_sum_should_add_gradient_to_the_variables() {
+        let a = value_with_grad(0.0, 0.1);
+        let b = value_with_grad(0.0, 0.2);
         let x = add(&a, &b);
-        *x.grad.borrow_mut() = 0.42;
 
-        backward_step(&x);
+        backward(&x);
 
-        assert_eq!(*a.grad.borrow(), 0.5);
-        assert_eq!(*b.grad.borrow(), 1.0);
+        assert_eq!(*a.grad.borrow(), 1.1);
+        assert_eq!(*b.grad.borrow(), 1.2);
     }
 
     #[test]
-    fn backward_step_on_mul_node_should_add_gradient_to_the_variables() {
+    fn backward_on_mul_should_add_gradient_to_the_variables() {
         let a = value_with_grad(0.5, 0.05);
         let b = value_with_grad(0.25, 0.05);
         let x = mul(&a, &b);
-        *x.grad.borrow_mut() = 0.8;
 
-        backward_step(&x);
+        backward(&x);
 
-        assert_eq!(*a.grad.borrow(), 0.25);
-        assert_eq!(*b.grad.borrow(), 0.45);
+        assert_eq!(*a.grad.borrow(), 0.3);
+        assert_eq!(*b.grad.borrow(), 0.55);
     }
 
     #[test]
-    fn backward_step_on_tanh_node_should_add_gradient_to_the_variable() {
-        let a = value(0.8814);
+    fn backward_on_tanh_should_add_gradient_to_the_variable() {
+        let a = value_with_grad(0.8814, 0.5);
         let x = tanh(&a);
-        *x.grad.borrow_mut() = 1.0;
 
-        backward_step(&x);
+        backward(&x);
 
-        assert_eq!(*a.grad.borrow(), 0.4999813233768232);
+        assert_eq!(*a.grad.borrow(), 0.9999813233768232);
     }
 
     #[test]
-    fn backward_step_on_pow_node_should_add_gradient_to_the_variables() {
+    fn backward_on_pow_should_add_gradient_to_the_variables() {
         let a = value(2.0);
         let x =  pow(&a, 3.0);
-        *x.grad.borrow_mut() = 1.0;
 
-        backward_step(&x);
+        backward(&x);
 
         assert_eq!(*a.grad.borrow(), 12.0);
     }
 
     #[test]
     fn backward_on_sub_should_add_gradient_to_the_variables() {
-        let a = value(3.0);
-        let b = value(2.0);
+        let a = value_with_grad(3.0, 0.5);
+        let b = value_with_grad(2.0, -0.5);
         let x = sub(&a, &b);
-        *x.grad.borrow_mut() = 1.0;
 
         backward(&x);
 
-        assert_eq!(*a.grad.borrow(), 1.0);
-        assert_eq!(*b.grad.borrow(), -1.0);
+        assert_eq!(*a.grad.borrow(), 1.5);
+        assert_eq!(*b.grad.borrow(), -1.5);
     }
 
     #[test]
@@ -233,7 +228,6 @@ mod tests {
         let a = value(3.0);
         let b = value(2.0);
         let x = div(&a, &b);
-        *x.grad.borrow_mut() = 1.0;
 
         backward(&x);
 
