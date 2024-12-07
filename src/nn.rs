@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use crate::autograd::{add, mul, tanh, value, Value};
+use crate::autograd::{value, Value, ValueOps};
 use rand::{Rng, SeedableRng};
 use rand::distributions::Uniform;
 use rand::rngs::StdRng;
@@ -27,9 +27,9 @@ impl Neuron {
     fn process(&self, inputs: &[Rc<Value>]) -> Rc<Value> {
         let mut sum = value(0.0);
         for (wi, xi) in self.weights.iter().zip(inputs) {
-            sum = add(&sum, &mul(wi, xi));
+            sum = sum.add(&wi.mul(xi));
         }
-        tanh(&add(&sum, &self.bias))
+        sum.add(&self.bias).tanh()
     }
 }
 
