@@ -1,12 +1,11 @@
-use std::rc::Rc;
-use crate::autograd::{add, mul, tanh, value, Value};
+use crate::autograd::Tensor;
 use rand::{Rng, SeedableRng};
 use rand::distributions::Uniform;
 use rand::rngs::StdRng;
 
 struct Neuron {
-    weights: Vec<Rc<Value>>,
-    bias: Rc<Value>,
+    weights: Vec<Tensor>,
+    bias: Tensor,
 }
 
 struct Layer {
@@ -19,17 +18,17 @@ struct Mlp {
 
 impl Neuron {
     fn new(number_of_inputs: i32, rng: &mut StdRng) -> Neuron {
-        let weights = (0..number_of_inputs).map(|_| value(rng.sample(rng_range()))).collect();
-        let bias = value(rng.sample(rng_range()));
+        let weights = (0..number_of_inputs).map(|_| Tensor::new(rng.sample(rng_range()))).collect();
+        let bias = Tensor::new(rng.sample(rng_range()));
         Neuron { weights, bias }
     }
 
-    fn process(&self, inputs: &[Rc<Value>]) -> Rc<Value> {
-        let mut sum = value(0.0);
+    fn process(&self, inputs: &[Tensor]) -> Tensor {
+        let mut sum = Tensor::new(0.0);
         for (wi, xi) in self.weights.iter().zip(inputs) {
-            sum = add(&sum, &mul(wi, xi));
+            sum = sum.add(&wi.mul(xi));
         }
-        tanh(&add(&sum, &self.bias))
+        sum.add(&self.bias).tanh()
     }
 }
 
@@ -38,7 +37,7 @@ impl Layer {
         Layer { neurons: (0..number_of_neurons).map(|_| Neuron::new(number_of_inputs, rng)).collect()}
     }
 
-    fn process(&self, inputs: &[Rc<Value>]) -> Vec<Rc<Value>> {
+    fn process(&self, inputs: &[Tensor]) -> Vec<Tensor> {
         self.neurons.iter().map(|n| n.process(inputs)).collect()
     }
 }
@@ -51,8 +50,8 @@ impl Mlp {
         Mlp { layers }
     }
 
-    fn process(&self, inputs: &[f64]) -> Vec<Rc<Value>> {
-        let mut x: Vec<_> = inputs.iter().map(|i| value(*i)).collect();
+    fn process(&self, inputs: &[f64]) -> Vec<Tensor> {
+        let mut x: Vec<_> = inputs.iter().map(|i| Tensor::new(*i)).collect();
         for layer in &self.layers {
             x = layer.process(&x);
         }
@@ -67,7 +66,6 @@ fn rng_range() -> Uniform<f64> {
 #[cfg(test)]
 mod tests {
     use rand::Rng;
-    use crate::autograd::value;
     use crate::nn::*;
 
     #[test]
@@ -75,7 +73,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let number_of_inputs = 3;
         let neuron = Neuron::new(number_of_inputs, &mut rng);
-        let inputs: Vec<_> = (0..number_of_inputs).map(|_| value(rng.gen())).collect();
+        let inputs: Vec<_> = (0..number_of_inputs).map(|_| Tensor::new(rng.gen())).collect();
 
         let output = neuron.process(&inputs);
 
@@ -88,7 +86,7 @@ mod tests {
         let number_of_inputs = 3;
         let number_of_neurons = 3;
         let layer = Layer::new(number_of_inputs, number_of_neurons, &mut rng);
-        let inputs: Vec<_> = (0..number_of_inputs).map(|_| value(rng.gen())).collect();
+        let inputs: Vec<_> = (0..number_of_inputs).map(|_| Tensor::new(rng.gen())).collect();
 
         let output = layer.process(&inputs);
 
