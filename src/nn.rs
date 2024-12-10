@@ -1,5 +1,5 @@
 use crate::autograd::Tensor;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use rand::distributions::Uniform;
 use rand::rngs::StdRng;
 
@@ -12,7 +12,7 @@ struct Layer {
     neurons: Vec<Neuron>,
 }
 
-struct Mlp {
+pub struct Mlp {
     layers: Vec<Layer>
 }
 
@@ -30,6 +30,10 @@ impl Neuron {
         }
         sum.add(&self.bias).tanh()
     }
+
+    fn parameters(&self) -> Vec<Tensor> {
+        [self.weights.iter().map(Tensor::clone).collect(), vec![Tensor::clone(&self.bias)]].concat()
+    }
 }
 
 impl Layer {
@@ -40,22 +44,37 @@ impl Layer {
     fn process(&self, inputs: &[Tensor]) -> Vec<Tensor> {
         self.neurons.iter().map(|n| n.process(inputs)).collect()
     }
+
+    fn parameters(&self) -> Vec<Tensor> {
+        self.neurons.iter().flat_map(|n| n.parameters()).collect()
+    }
+
 }
 
 impl Mlp {
-    fn new(number_of_inputs: i32, layers: Vec<i32>, rng: &mut StdRng) -> Mlp {
+    pub fn new(number_of_inputs: i32, layers: Vec<i32>, rng: &mut StdRng) -> Mlp {
         let n = [vec![number_of_inputs], layers].concat();
         let layers = n.iter().zip(n.iter().skip(1))
             .map(|(n_inputs, n_neurons)| Layer::new(*n_inputs, *n_neurons, rng)).collect();
         Mlp { layers }
     }
 
-    fn process(&self, inputs: &[f64]) -> Vec<Tensor> {
+    pub fn process(&self, inputs: &[f64]) -> Vec<Tensor> {
         let mut x: Vec<_> = inputs.iter().map(|i| Tensor::new(*i)).collect();
         for layer in &self.layers {
             x = layer.process(&x);
         }
         x
+    }
+
+    pub fn parameters(&self) -> Vec<Tensor> {
+        self.layers.iter().flat_map(|l| l.parameters()).collect()
+    }
+
+    pub fn zero_grad(&self) {
+        for p in self.parameters() {
+            *p.grad.borrow_mut() = 0.0;
+        }
     }
 }
 
@@ -65,7 +84,7 @@ fn rng_range() -> Uniform<f64> {
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
+    use rand::{Rng, SeedableRng};
     use crate::nn::*;
 
     #[test]
@@ -108,5 +127,29 @@ mod tests {
         let output = mlp.process(&inputs);
 
         assert_eq!(*output[0].data.borrow(), 0.88226677498484760);
+    }
+
+    #[test]
+    fn mlp_should_return_all_parameters() {
+        let number_of_inputs = 3;
+        let mut rng = StdRng::seed_from_u64(42);
+        let mlp = Mlp::new(number_of_inputs, vec![4, 4, 1], &mut rng);
+
+        assert_eq!(mlp.parameters().len(), 41);
+    }
+
+    #[test]
+    fn mpl_should_zero_grad_all_parameters() {
+        let number_of_inputs = 3;
+        let mut rng = StdRng::seed_from_u64(42);
+        let mlp = Mlp::new(number_of_inputs, vec![4, 4, 1], &mut rng);
+
+        for p in mlp.parameters() {
+            *p.grad.borrow_mut() = 1.0;
+        }
+
+        mlp.zero_grad();
+
+        assert_eq!(mlp.parameters().iter().map(|p|*p.grad.borrow()).sum::<f64>(), 0.0);
     }
 }

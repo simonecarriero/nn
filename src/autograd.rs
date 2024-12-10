@@ -5,13 +5,14 @@ use std::ops;
 use std::rc::Rc;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct Tensor(Rc<Value>);
 
 #[derive(Debug, PartialEq)]
 pub struct Value {
     pub data: RefCell<f64>,
+    pub grad: RefCell<f64>,
     label: Uuid,
-    grad: RefCell<f64>,
     back: Op,
 }
 
