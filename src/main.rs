@@ -12,27 +12,20 @@ mod nn;
 fn main() {
     let mut rng = StdRng::seed_from_u64(42);
     let model = Mlp::new(2, vec![16, 16, 1], &mut rng);
+    let make_moons = make_moons(&mut rng);
+    let (training_set, test_set) = make_moons.split_at(100);
 
-    let training_set_size = 100;
+    println!("Training set gradient descent");
     let number_of_iterations = 100;
-    let mut make_moons = read_make_moons();
-    make_moons.shuffle(&mut rng);
-
-    let training_set = &make_moons[0..training_set_size];
-    let test_set = &make_moons[training_set_size..make_moons.len()];
-
-    // Gradient descent
     for k in 0..number_of_iterations {
         let mut loss = Tensor::new(0.0);
-        let mut matches = 0;
+        let mut scores = vec![];
 
         //forward pass
         for (x, y, label) in training_set {
-            let score = &model.process(&[*x,*y])[0];
+            let score = &model.process(&[*x, *y])[0];
             loss = loss.add(&Tensor::new(*label).sub(score).pow(2.0));
-            if (*label > 0.0) == (*score.data.borrow() > 0.0) {
-                matches += 1;
-            }
+            scores.push((*x, *y, *score.data.borrow()));
         }
         loss = loss.mul(&Tensor::new(1.0).div(&Tensor::new(training_set.len() as f64)));
 
@@ -46,29 +39,37 @@ fn main() {
             *p.data.borrow_mut() -= *p.grad.borrow() * learning_rate;
         }
 
-        println!("Step {}, loss: {}, accuracy: {}%", k, *loss.data.borrow(), matches as f64 / training_set.len() as f64 * 100.0);
+        let accuracy = accuracy(training_set, &scores);
+        println!("Step {}, loss: {}, accuracy: {}%", k, *loss.data.borrow(), accuracy);
     }
 
-    // Test set
-    let mut matches = 0;
-    for (x, y, label) in test_set {
-        let score = &model.process(&[*x,*y])[0];
-        if (*label > 0.0) == (*score.data.borrow() > 0.0) {
-            matches += 1;
-        }
+    println!("Test set inference");
+    let mut scores = vec![];
+    for (x, y, _) in test_set {
+        let score = &model.process(&[*x, *y])[0];
+        scores.push((*x, *y, *score.data.borrow()));
     }
-    println!();
-    println!("Test set accuracy: {}%", matches as f64 / test_set.len() as f64 * 100.0);
 
+    let accuracy = accuracy(test_set, &scores);
+    println!("Accuracy: {}%", accuracy);
 }
 
-fn read_make_moons() -> Vec<(f64, f64, f64)> {
-    BufReader::new(File::open("make_moons.csv").unwrap()).lines().map(|line| {
+fn accuracy(labels: &[(f64, f64, f64)], scores: &[(f64, f64, f64)]) -> f64 {
+    let matches = labels.iter().zip(scores).filter(|((_, _, label), (_, _, score))|
+        (*label > 0.0) == (*score > 0.0)
+    ).count();
+    matches as f64 / labels.len() as f64 * 100.0
+}
+
+fn make_moons(rng: &mut StdRng) -> Vec<(f64, f64, f64)> {
+    let mut make_moons = BufReader::new(File::open("make_moons.csv").unwrap()).lines().map(|line| {
         let line = line.unwrap();
         let line: Vec<_> = line.split(',').collect();
         let x = line[0].trim().parse().unwrap();
         let y = line[1].trim().parse().unwrap();
         let label = line[2].trim().parse().unwrap();
         (x, y, label)
-    }).collect()
+    }).collect::<Vec<_>>();
+    make_moons.shuffle(rng);
+    make_moons
 }
