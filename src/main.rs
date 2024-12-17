@@ -1,3 +1,4 @@
+use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use rand::rngs::StdRng;
@@ -5,9 +6,11 @@ use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use crate::autograd::Tensor;
 use crate::nn::Mlp;
+use crate::plot::{plot_decision_boundary, plot_classification};
 
 mod autograd;
 mod nn;
+mod plot;
 
 fn main() {
     let mut rng = StdRng::seed_from_u64(42);
@@ -28,6 +31,9 @@ fn main() {
             scores.push((*x, *y, *score.data.borrow()));
         }
         loss = loss.mul(&Tensor::new(1.0).div(&Tensor::new(training_set.len() as f64)));
+        let accuracy = accuracy(training_set, &scores);
+        println!("Step {}, loss: {}, accuracy: {}%", k, *loss.data.borrow(), accuracy);
+        plot_gradient_descent_step_decision_boundary(&k, &loss.data.borrow(), &accuracy, &model, &scores);
 
         //backward pass
         model.zero_grad();
@@ -38,9 +44,6 @@ fn main() {
         for p in model.parameters() {
             *p.data.borrow_mut() -= *p.grad.borrow() * learning_rate;
         }
-
-        let accuracy = accuracy(training_set, &scores);
-        println!("Step {}, loss: {}, accuracy: {}%", k, *loss.data.borrow(), accuracy);
     }
 
     println!("Test set inference");
@@ -52,6 +55,7 @@ fn main() {
 
     let accuracy = accuracy(test_set, &scores);
     println!("Accuracy: {}%", accuracy);
+    plot_test_set_classification(&scores, &accuracy);
 }
 
 fn accuracy(labels: &[(f64, f64, f64)], scores: &[(f64, f64, f64)]) -> f64 {
@@ -59,6 +63,21 @@ fn accuracy(labels: &[(f64, f64, f64)], scores: &[(f64, f64, f64)]) -> f64 {
         (*label > 0.0) == (*score > 0.0)
     ).count();
     matches as f64 / labels.len() as f64 * 100.0
+}
+
+fn plot_gradient_descent_step_decision_boundary(step: &i32, loss: &f64, accuracy: &f64, model: &Mlp, scores: &[(f64, f64, f64)]) {
+    if env::args().any(|x| x == "--plot") {
+        let title = "Training set<br>Decision boundary during gradient descent";
+        let text = &format!("Step {}<br>Loss {}<br>Accuracy {}%", step, loss, accuracy);
+        plot_decision_boundary(model, scores, title, text,&format!("decision-boundary-{:02}.png", step));
+    }
+}
+
+fn plot_test_set_classification(scores: &[(f64, f64, f64)], accuracy: &f64) {
+    if env::args().any(|x| x == "--plot") {
+        let text = &format!("Test set inference<br>Accuracy {}%", accuracy);
+        plot_classification(scores, text, "classification.png");
+    }
 }
 
 fn make_moons(rng: &mut StdRng) -> Vec<(f64, f64, f64)> {

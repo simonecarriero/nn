@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 uuid = { version = "1.11.0", features = ["v4"] }
 rand = "0.8.5"
+plotly = { version = "0.11", features = ["kaleido"] }
